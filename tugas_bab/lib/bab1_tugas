@@ -1,0 +1,171 @@
+// main.dart
+import 'dart:async'; //agar bisa menggunakan Future dan async-await
+
+class Product { 
+  final String productName;
+  double price;
+  bool inStock;
+
+  Product({required this.productName, required this.price, this.inStock = true});
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Product && runtimeType == other.runtimeType && productName == other.productName;
+
+  @override
+  int get hashCode => productName.hashCode;
+
+  @override
+  String toString() => '$productName (\$${price.toStringAsFixed(2)}) - inStock: $inStock';
+}
+
+enum Role { Admin, Customer }
+
+class User {
+  String name;
+  int age;
+  late List<Product>? products;
+  Role? role;
+
+  User({required this.name, required this.age, this.role});
+
+  void initProducts([List<Product>? initial]) {
+    products = initial ?? <Product>[];
+  }
+
+  @override
+  String toString() {
+    final prodCount = products == null ? 0 : products!.length;
+    return 'User{name: $name, age: $age, role: $role, products: $prodCount}';
+  }
+}
+
+class OutOfStockException implements Exception {
+  final String message;
+  OutOfStockException(this.message);
+  @override
+  String toString() => 'OutOfStockException: $message';
+}
+
+class AdminUser extends User {
+  AdminUser({required String name, required int age}) : super(name: name, age: age) {
+    role = Role.Admin;
+  }
+
+  void addProductToUser(User targetUser, Product product) {
+    // pastikan products sudah diinisialisasi
+    targetUser.products ??= <Product>[];
+
+    // gunakan Set untuk memastikan unik
+    final existingNames = targetUser.products!.map((p) => p.productName).toSet();
+    if (existingNames.contains(product.productName)) {
+      print('Produk "${product.productName}" sudah ada pada ${targetUser.name}. Lewati penambahan.');
+      return;
+    }
+
+    if (!product.inStock) { 
+      throw OutOfStockException('Produk "${product.productName}" sedang tidak tersedia (out of stock).');
+    }
+
+    targetUser.products!.add(product);
+    print('Admin ${this.name} menambahkan produk "${product.productName}" ke ${targetUser.name}.');
+  }
+
+  void removeProductFromUser(User targetUser, String productName) {
+    targetUser.products ??= <Product>[];
+    targetUser.products!.removeWhere((p) => p.productName == productName);
+    print('Admin ${this.name} menghapus produk "$productName" dari ${targetUser.name}.');
+  }
+}
+
+class CustomerUser extends User {
+  CustomerUser({required String name, required int age}) : super(name: name, age: age) {
+    role = Role.Customer;
+  }
+
+  void viewProducts() {
+    if (products == null || products!.isEmpty) {
+      print('Tidak ada produk untuk ditampilkan.');
+      return;
+    }
+    print('Produk untuk ${this.name}:');
+    for (var p in products!) {
+      print(' - $p');
+    }
+  }
+}
+
+// Simulasi katalog (Map)
+final Map<String, Product> productCatalog = {
+  'Keyboard': Product(productName: 'Keyboard', price: 25.0, inStock: true),
+  'Mouse': Product(productName: 'Mouse', price: 15.0, inStock: true),
+  'Headset': Product(productName: 'Headset', price: 45.0, inStock: false), // contoh out-of-stock
+  'Monitor': Product(productName: 'Monitor', price: 120.0, inStock: true),
+};
+
+Future<Product> fetchProductDetails(String name) async {
+  print('Mengambil data produk "$name" dari server...');
+  await Future.delayed(Duration(seconds: 2));
+  final product = productCatalog[name];
+  if (product == null) {
+    throw Exception('Produk "$name" tidak ditemukan di katalog.');
+  }
+  print('Selesai mengambil data produk "$name".');
+  return product;
+}
+
+void contohExceptionHandling(AdminUser admin, User target, Product p) {
+  try {
+    admin.addProductToUser(target, p);
+  } on OutOfStockException catch (e) {
+    print('Gagal menambah produk: ${e.message}');
+  } catch (e) {
+    print('Terjadi kesalahan lain: $e');
+  } finally {
+    print('Operasi penambahan selesai.');
+  }
+}
+
+Future<void> main() async {
+  // buat pengguna
+  final admin = AdminUser(name: 'Rizal', age: 30);
+  final customer = CustomerUser(name: 'Siti', age: 22);
+
+  // inisialisasi products (late)
+  admin.initProducts();
+  customer.initProducts();
+
+  print(admin);
+  print(customer);
+
+  // contoh: fetch produk secara async dari katalog lalu admin menambahkannya ke customer
+  try {
+    final prod1 = await fetchProductDetails('Keyboard');
+    contohExceptionHandling(admin, customer, prod1);
+
+    final prod2 = await fetchProductDetails('Headset'); // Headset out-of-stock
+    contohExceptionHandling(admin, customer, prod2);
+  } catch (e) {
+    print('Error saat fetch atau operasi: $e');
+  }
+
+  // Customer melihat produknya
+  customer.viewProducts();
+
+  // Admin coba tambah produk duplikat
+  try {
+    final prodKeyboard = await fetchProductDetails('Keyboard'); 
+    admin.addProductToUser(customer, prodKeyboard); // akan deteksi duplikat dan dilewati
+  } catch (e) {
+    print('Error: $e');
+  }
+
+// Admin menghapus produk dari customer
+  admin.removeProductFromUser(customer, 'Keyboard');
+  customer.viewProducts();
+
+  // Demonstrasi Map & Set output
+  print('\nKatalog produk (Map):');
+  productCatalog.forEach((k, v) => print(' - $k: $v'));
+}
